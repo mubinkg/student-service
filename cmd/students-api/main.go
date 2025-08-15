@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/mubinkg/student-management/internal/config"
 )
@@ -23,11 +29,30 @@ func main() {
 		Handler: router,
 	}
 
-	fmt.Printf("Server started: http://%s", config.Address)
+	done := make(chan os.Signal, 1)
 
-	err := server.ListenAndServe()
-	if err != nil {
-		log.Fatal("Failed to start server")
+	signal.Notify(done, syscall.SIGINT, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		fmt.Printf("Server started: http://%s", config.Address)
+
+		err := server.ListenAndServe()
+		if err != nil {
+			log.Fatal("Failed to start server")
+		}
+	}()
+
+	<-done
+
+	slog.Info("Shutting down the server")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		slog.Info("Fialed to shutdown the server")
 	}
 
+	slog.Info("Server shutdown successfully")
 }
